@@ -15,7 +15,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 TARGET_URL = os.getenv("TARGET_URL", "https://www.getlinks.info/love/c/pvcapru")
 INPUT_1_ID = "yourname"
 INPUT_2_ID = "crushname"
-ITERATIONS = int(os.getenv("ITERATIONS", "150")) 
+ITERATIONS = int(os.getenv("ITERATIONS", "300")) 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger()
